@@ -85,7 +85,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock2alice:
 	)
 	print('Alice\'s AES Session Key :\n', AESKey)
 
-	# Receive Initial Vector from Server
+	# Receive Initial Vector from Alice
 	msg_size = struct.unpack('i', sock2alice.recv(4))
 	encryptedIV = sock2alice.recv(int(msg_size[0]))
 	print('Received C2 from Alice :\n', encryptedIV)
@@ -105,8 +105,47 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock2alice:
 	print('Received C4 :\n', encryptedReq1)
 	cipher = Cipher(algorithms.AES(AESKey), modes.CBC(IV), backend=default_backend())
 	decryptor = cipher.decryptor()
-	req1 = decryptor.update(encryptedReq1)
+	req1 = decryptor.update(encryptedReq1) + decryptor.finalize()
 	print('Request 1 :\n', str(req1))
+
+	# Send AES Session Key to Bob
+	with open('Bob.pem', 'rb') as f:
+		BobPubKey = serialization.load_pem_public_key(
+			f.read(),
+			backend=default_backend()
+		)
+		f.close()
+	encryptedAESKey = BobPubKey.encrypt(
+		bytes(AESKey),
+		padding.OAEP(
+			mgf=padding.MGF1(algorithm=hashes.SHA1()),
+	        algorithm=hashes.SHA1(),
+        	label=None
+		)
+	)
+	msg_size = len(encryptedAESKey)
+	byte_msg_size = struct.pack('i', msg_size)
+	sock2bob.sendall(byte_msg_size)
+	sock2bob.sendall(encryptedAESKey)
+	print('I send encrypted AES session key to Bob :\n', str(encryptedAESKey))
+
+	# Send Initial Vector to Bob
+	encryptedIV = BobPubKey.encrypt(
+		bytes(IV),
+		padding.OAEP(
+			mgf=padding.MGF1(algorithm=hashes.SHA1()),
+	        algorithm=hashes.SHA1(),
+        	label=None
+		)
+	)
+	msg_size = len(encryptedIV)
+	byte_msg_size = struct.pack('i', msg_size)
+	sock2bob.sendall(byte_msg_size)
+	sock2bob.sendall(encryptedIV)
+	print('I send encrypted Initial Vector to Bob :\n', str(encryptedIV))
+
+	#
+	
 
 	# bye
 	#msg_size = struct.unpack("i", sock2alice.recv(4))
