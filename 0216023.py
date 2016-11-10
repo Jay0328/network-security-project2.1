@@ -144,10 +144,37 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock2alice:
 	sock2bob.sendall(encryptedIV)
 	print('I send encrypted Initial Vector to Bob :\n', str(encryptedIV))
 
-	#
-	
+	# Send Request 2 to Bob
+	msg_size = len(encryptedReq1)
+	byte_msg_size = struct.pack('i', msg_size)
+	sock2bob.sendall(byte_msg_size)
+	sock2bob.sendall(encryptedReq1)
+	print('I send encrypted request 2 to Bob :\n', str(encryptedReq1))
 
-	# bye
-	#msg_size = struct.unpack("i", sock2alice.recv(4))
-	#received = str(sock.recv(int(msg_size[0])), "utf-8")
-	#print(received)
+	# Receive Response 1 from Bob
+	msg_size = struct.unpack('i', sock2bob.recv(4))
+	encryptedRes1 = sock2bob.recv(int(msg_size[0]))
+	print('Received C7 :\n', encryptedRes1)
+	cipher = Cipher(algorithms.AES(AESKey), modes.CBC(IV), backend=default_backend())
+	decryptor = cipher.decryptor()
+	res1 = decryptor.update(encryptedRes1) + decryptor.finalize()
+	print('Response 1 :\n', str(res1))
+
+	# Receive bye from Bob
+	msg_size = struct.unpack("i", sock2bob.recv(4))
+	received = str(sock2bob.recv(int(msg_size[0])), "utf-8")
+	print(received)
+
+	# Send Response 2 to Alice
+	msg_size = len(encryptedRes1)
+	byte_msg_size = struct.pack('i', msg_size)
+	sock2alice.sendall(byte_msg_size)
+	sock2alice.sendall(encryptedRes1)
+	print('I send encrypted response 2 to Alice :\n', str(encryptedRes1))
+	
+	# Send bye to Alice
+	msg_size = len("bye")
+	byte_msg_size = struct.pack("i", msg_size)
+	sock2alice.sendall( byte_msg_size )
+	sock2alice.sendall(bytes("bye", 'utf-8'))
+	print('I send bye to alice')
