@@ -1,6 +1,8 @@
 import socket
 import sys
 import struct
+import hashlib
+import math
 # The following libraries should be installed before executing
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
@@ -99,14 +101,14 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock2alice:
 	)
 	print('Initial Vector :\n', IV)
 
-	# Receive message 1 from Alice
+	# Receive request from Alice
 	msg_size = struct.unpack('i', sock2alice.recv(4))
-	encryptedReq1 = sock2alice.recv(int(msg_size[0]))
-	print('Received C4 :\n', encryptedReq1)
+	encryptedReq = sock2alice.recv(int(msg_size[0]))
+	print('Received C4 :\n', encryptedReq)
 	cipher = Cipher(algorithms.AES(AESKey), modes.CBC(IV), backend=default_backend())
 	decryptor = cipher.decryptor()
-	req1 = decryptor.update(encryptedReq1) + decryptor.finalize()
-	print('Request 1 :\n', str(req1))
+	req = decryptor.update(encryptedReq) + decryptor.finalize()
+	print('Request :\n', str(req))
 
 	# Send AES Session Key to Bob
 	with open('Bob.pem', 'rb') as f:
@@ -144,33 +146,33 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock2alice:
 	sock2bob.sendall(encryptedIV)
 	print('I send encrypted Initial Vector to Bob :\n', str(encryptedIV))
 
-	# Send Request 2 to Bob
-	msg_size = len(encryptedReq1)
+	# Send Request to Bob
+	msg_size = len(encryptedReq)
 	byte_msg_size = struct.pack('i', msg_size)
 	sock2bob.sendall(byte_msg_size)
-	sock2bob.sendall(encryptedReq1)
-	print('I send encrypted request 2 to Bob :\n', str(encryptedReq1))
+	sock2bob.sendall(encryptedReq)
+	print('I send encrypted request to Bob :\n', str(encryptedReq))
 
-	# Receive Response 1 from Bob
+	# Receive Response from Bob
 	msg_size = struct.unpack('i', sock2bob.recv(4))
-	encryptedRes1 = sock2bob.recv(int(msg_size[0]))
-	print('Received C7 :\n', encryptedRes1)
+	encryptedRes = sock2bob.recv(int(msg_size[0]))
+	print('Received C7 :\n', encryptedRes)
 	cipher = Cipher(algorithms.AES(AESKey), modes.CBC(IV), backend=default_backend())
 	decryptor = cipher.decryptor()
-	res1 = decryptor.update(encryptedRes1) + decryptor.finalize()
-	print('Response 1 :\n', str(res1))
+	res = decryptor.update(encryptedRes) + decryptor.finalize()
+	print('Response :\n', str(res))
 
 	# Receive bye from Bob
 	msg_size = struct.unpack("i", sock2bob.recv(4))
 	received = str(sock2bob.recv(int(msg_size[0])), "utf-8")
 	print(received)
 
-	# Send Response 2 to Alice
-	msg_size = len(encryptedRes1)
+	# Send Response to Alice
+	msg_size = len(encryptedRes)
 	byte_msg_size = struct.pack('i', msg_size)
 	sock2alice.sendall(byte_msg_size)
-	sock2alice.sendall(encryptedRes1)
-	print('I send encrypted response 2 to Alice :\n', str(encryptedRes1))
+	sock2alice.sendall(encryptedRes)
+	print('I send encrypted response to Alice :\n', str(encryptedRes))
 	
 	# Send bye to Alice
 	msg_size = len("bye")
@@ -178,3 +180,90 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock2alice:
 	sock2alice.sendall( byte_msg_size )
 	sock2alice.sendall(bytes("bye", 'utf-8'))
 	print('I send bye to alice')
+
+###############
+print('---------------------------')
+print('-------I am divider--------')
+print('---------------------------')
+
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock2bob:
+	# Connect to Bob
+	sock2bob.connect((HOST, BOB_PORT))
+
+	# Send hello to Bob
+	msg_size = len("hello")
+	byte_msg_size = struct.pack("i", msg_size)
+	sock2bob.sendall( byte_msg_size )
+	sock2bob.sendall(bytes("hello", 'utf-8'))
+	print('I send hello to Bob')
+
+	# Receive public key from Bob
+	msg_size = struct.unpack('i', sock2bob.recv(4))
+	BobPubKey = str(sock2bob.recv(int(msg_size[0])), "utf-8")
+	print('Bob\'s key :\n', BobPubKey)
+	with open('Bob.pem', 'w') as f:
+		f.write(BobPubKey)
+		f.close()
+
+	# Send AES Session Key to Bob
+	with open('Bob.pem', 'rb') as f:
+		BobPubKey = serialization.load_pem_public_key(
+			f.read(),
+			backend=default_backend()
+		)
+		f.close()
+	encryptedAESKey = BobPubKey.encrypt(
+		bytes(AESKey),
+		padding.OAEP(
+			mgf=padding.MGF1(algorithm=hashes.SHA1()),
+	        algorithm=hashes.SHA1(),
+        	label=None
+		)
+	)
+	msg_size = len(encryptedAESKey)
+	byte_msg_size = struct.pack('i', msg_size)
+	sock2bob.sendall(byte_msg_size)
+	sock2bob.sendall(encryptedAESKey)
+	print('I send encrypted AES session key to Bob :\n', str(encryptedAESKey))
+
+	# Send Initial Vector to Bob
+	encryptedIV = BobPubKey.encrypt(
+		bytes(IV),
+		padding.OAEP(
+			mgf=padding.MGF1(algorithm=hashes.SHA1()),
+	        algorithm=hashes.SHA1(),
+        	label=None
+		)
+	)
+	msg_size = len(encryptedIV)
+	byte_msg_size = struct.pack('i', msg_size)
+	sock2bob.sendall(byte_msg_size)
+	sock2bob.sendall(encryptedIV)
+	print('I send encrypted Initial Vector to Bob :\n', str(encryptedIV))
+
+	# Send Request to Bob
+	h = hashlib.sha256(b"0216023").hexdigest()
+	req = '{"Account_ID": "0216023", "Authentication_Code": "' + h + '", "Favorite_Snack": "PineApplePie", "Account_Money": "0", "Remark": "If you have any question, please mail to any TA ASAP.", "Feedback": "How is the midterm exam? Good?", "Favorite_Fruit": "Apple", "Favorite_Song": ["P", "P", "A", "P"]}' + (' ' * 1)
+	cipher = Cipher(algorithms.AES(AESKey), modes.CBC(IV), backend=default_backend())
+	encryptor = cipher.encryptor()
+	encryptedReq = encryptor.update(bytes(req, 'utf-8')) + encryptor.finalize()
+	msg_size = len(encryptedReq)
+	byte_msg_size = struct.pack('i', msg_size)
+	sock2bob.sendall(byte_msg_size)
+	sock2bob.sendall(encryptedReq)
+	print('I send encrypted request to Bob :\n', str(encryptedReq))
+
+	# Receive Response from Bob
+	msg_size = struct.unpack('i', sock2bob.recv(4))
+	encryptedRes = sock2bob.recv(int(msg_size[0]))
+	print('Received C7 :\n', encryptedRes)
+	cipher = Cipher(algorithms.AES(AESKey), modes.CBC(IV), backend=default_backend())
+	decryptor = cipher.decryptor()
+	res = decryptor.update(encryptedRes) + decryptor.finalize()
+	print('Response :\n', str(res))
+
+	# Receive bye from Bob
+	msg_size = struct.unpack("i", sock2bob.recv(4))
+	received = str(sock2bob.recv(int(msg_size[0])), "utf-8")
+	print(received)
